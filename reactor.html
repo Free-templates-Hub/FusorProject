@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fusor Inercial Esférico em 3D Detalhado</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            overflow: hidden;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .controls button {
+            margin: 5px 0;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 5px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div class="tooltip" id="tooltip"></div>
+    <div class="controls">
+        <button onclick="toggleVisibility('outerShell')">Ocultar/Mostrar Câmara de Vácuo</button>
+        <button onclick="toggleVisibility('innerGrid')">Ocultar/Mostrar Grade de Alta Tensão</button>
+        <button onclick="toggleVisibility('coreGrid')">Ocultar/Mostrar Grade de Baixa Tensão</button>
+        <button onclick="toggleVisibility('structureExternal')">Ocultar/Mostrar Estrutura Externa</button>
+        <button onclick="toggleVisibility('power')">Ocultar/Mostrar Fontes de Energia</button>
+        <button onclick="toggleVisibility('evacuationSystem')">Ocultar/Mostrar Bomba de Vácuo</button>
+        <button onclick="toggleVisibility('gases')">Ocultar/Mostrar Gases</button>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const tooltip = document.getElementById('tooltip');
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const objects = [];
+
+        // Função para criar um objeto de malha
+        function createMesh(geometry, material, name, id, position = [0, 0, 0]) {
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.name = name;
+            mesh.userData.id = id;
+            mesh.position.set(...position);
+            scene.add(mesh);
+            objects.push(mesh);
+            return mesh;
+        }
+
+        // Criar elementos do modelo
+        const outerShell = createMesh(new THREE.SphereGeometry(15, 32, 32), new THREE.MeshBasicMaterial({ color: 0xaaaaaa, wireframe: true }), "Câmara de Vácuo", 'outerShell');
+        const innerGrid = createMesh(new THREE.SphereGeometry(12.5, 32, 32), new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true }), "Grade de Alta Tensão", 'innerGrid');
+        const coreGrid = createMesh(new THREE.SphereGeometry(7.5, 32, 32), new THREE.MeshBasicMaterial({ color: 0x0000ff, wireframe: true }), "Grade de Baixa Tensão", 'coreGrid');
+        const entry = createMesh(new THREE.SphereGeometry(0.5, 32, 32), new THREE.MeshBasicMaterial({ color: 0x00ff00 }), "Entrada de Gases (Deutério e Trítio)", 'entry', [0, 15, 0]);
+        const exit = createMesh(new THREE.SphereGeometry(0.5, 32, 32), new THREE.MeshBasicMaterial({ color: 0xff00ff }), "Saída de Partículas", 'exit', [0, -15, 0]);
+        const gases = createMesh(new THREE.SphereGeometry(13, 32, 32), new THREE.MeshBasicMaterial({ color: 0x00ffff, opacity: 0.5, transparent: true }), "Gases (Deutério e Trítio)", 'gases');
+
+        const highPower = createMesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial({ color: 0xffa500 }), "Fonte de Alta Tensão", 'power', [-10, 0, 10]);
+        const lowPower = createMesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial({ color: 0x8b4513 }), "Fonte de Baixa Tensão", 'power', [10, 0, 10]);
+        const evacuationSystem = createMesh(new THREE.CylinderGeometry(1, 1, 5, 32), new THREE.MeshBasicMaterial({ color: 0x000000 }), "Bomba de Vácuo", 'evacuationSystem', [0, 15, -20]);
+        const structureExternal = createMesh(new THREE.SphereGeometry(18, 32, 32), new THREE.MeshBasicMaterial({ color: 0x777777, wireframe: true }), "Estrutura Externa", 'structureExternal');
+
+        camera.position.z = 40;
+
+        function toggleVisibility(id) {
+            objects.forEach(object => {
+                if (object.userData.id === id) {
+                    object.visible = !object.visible;
+                }
+            });
+        }
+
+        function onMouseMove(event) {
+            event.preventDefault();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function render() {
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(objects.filter(obj => obj.visible));
+            if (intersects.length > 0) {
+                const intersected = intersects[0].object;
+                tooltip.innerHTML = intersected.name;
+                tooltip.style.opacity = 1;
+                tooltip.style.left = `${event.clientX + 10}px`;
+                tooltip.style.top = `${event.clientY + 10}px`;
+            } else {
+                tooltip.style.opacity = 0;
+            }
+
+            outerShell.rotation.y += 0.01;
+            innerGrid.rotation.y += 0.02;
+            coreGrid.rotation.y += 0.03;
+            renderer.render(scene, camera);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            render();
+        }
+
+        animate();
+        window.addEventListener('mousemove', onMouseMove, false);
+    </script>
+</body>
+</html>
